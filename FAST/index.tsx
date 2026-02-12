@@ -1,17 +1,17 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
-import { Timer, Trophy, RotateCcw, ChevronRight, Lock, Target, MousePointer2, Download, Zap } from 'lucide-react';
+import { Timer, Star, RotateCcw, Download, Smile, Award, Zap, Ghost, HelpCircle, X, User, Sun, Moon } from 'lucide-react';
 
-// 遊戲難度配置
+// 專業難度配置 - 僅保留圖騰標識
 const LEVELS = {
-  BASIC: { key: 'BASIC' as const, name: '基礎', grid: 'grid-cols-3', total: 6, dupCount: 2, targetTypes: 1, score: 1, order: 0 },
-  ADVANCED: { key: 'ADVANCED' as const, name: '晉級', grid: 'grid-cols-3', total: 9, dupCount: 2, targetTypes: 1, score: 2, order: 1 },
-  LUXURY: { key: 'LUXURY' as const, name: '尊爵', grid: 'grid-cols-4', total: 12, dupCount: 4, targetTypes: 2, score: 5, order: 2 },
-  CHAOS: { key: 'CHAOS' as const, name: '混沌', grid: 'grid-cols-4', total: 12, dupCount: 0, targetTypes: 0, score: 10, order: 3 },
+  BASIC: { key: 'BASIC' as const, icon: '🌱', grid: 'grid-cols-3', total: 6, dupCount: 2, targetTypes: 1, score: 1, order: 0 },
+  ADVANCED: { key: 'ADVANCED' as const, icon: '🌳', grid: 'grid-cols-3', total: 9, dupCount: 2, targetTypes: 1, score: 2, order: 1 },
+  LUXURY: { key: 'LUXURY' as const, icon: '🌲', grid: 'grid-cols-4', total: 12, dupCount: 4, targetTypes: 2, score: 5, order: 2 },
+  CHAOS: { key: 'CHAOS' as const, icon: '🌈', grid: 'grid-cols-4', total: 12, dupCount: 0, targetTypes: 0, score: 10, order: 3 },
 };
 
-const TOTEMS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+const TOTEMS = ['🐕', '🐈', '🐸', '🐇', '🐂', '🔥', '🌀', '🍃', '⭐', '🎵'];
 
 type LevelKey = keyof typeof LEVELS;
 
@@ -20,14 +20,9 @@ interface Card {
   value: string;
 }
 
-// 音效系統
 class SoundSystem {
   ctx: AudioContext | null = null;
-
-  init() {
-    if (!this.ctx) this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-  }
-
+  init() { if (!this.ctx) this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)(); }
   private playTone(freq: number, type: OscillatorType, duration: number, volume: number = 0.1) {
     if (!this.ctx) return;
     if (this.ctx.state === 'suspended') this.ctx.resume();
@@ -42,18 +37,14 @@ class SoundSystem {
     osc.start();
     osc.stop(this.ctx.currentTime + duration);
   }
-
-  click() { this.playTone(800, 'sine', 0.1, 0.05); }
+  click() { this.playTone(1000, 'sine', 0.1, 0.05); } 
   correct() {
-    this.playTone(600, 'square', 0.15, 0.05);
-    setTimeout(() => this.playTone(900, 'square', 0.2, 0.05), 50);
+    this.playTone(800, 'sine', 0.1, 0.05);
+    setTimeout(() => this.playTone(1200, 'sine', 0.15, 0.05), 50);
   }
-  wrong() {
-    this.playTone(150, 'sawtooth', 0.4, 0.08);
-    setTimeout(() => this.playTone(100, 'sawtooth', 0.4, 0.08), 100);
-  }
+  wrong() { this.playTone(150, 'sawtooth', 0.4, 0.1); }
   victory() {
-    [523.25, 659.25, 783.99, 1046.50].forEach((f, i) => {
+    [523, 659, 783, 1046].forEach((f, i) => {
       setTimeout(() => this.playTone(f, 'sine', 0.5, 0.05), i * 150);
     });
   }
@@ -65,19 +56,20 @@ const App: React.FC = () => {
   const [gameState, setGameState] = useState<'menu' | 'playing' | 'gameOver' | 'error'>('menu');
   const [currentLevel, setCurrentLevel] = useState<LevelKey>('BASIC');
   const [highestLevelIndex, setHighestLevelIndex] = useState(0); 
-  
   const [scoreBreakdown, setScoreBreakdown] = useState({ BASIC: 0, ADVANCED: 0, LUXURY: 0, CHAOS: 0 });
   const [totalClicks, setTotalClicks] = useState(0);
   const [correctClicks, setCorrectClicks] = useState(0);
-  
   const [timeLeft, setTimeLeft] = useState(60);
   const [cards, setCards] = useState<Card[]>([]);
   const [selectedIndices, setSelectedIndices] = useState<number[]>([]);
   const [targetValues, setTargetValues] = useState<string[]>([]);
   const [chaosLogic, setChaosLogic] = useState<'FIND_UNIQUE' | 'FIND_TRIPLET' | null>(null);
   const [chaosTargetCount, setChaosTargetCount] = useState(0);
-  const [showChaosHint, setShowChaosHint] = useState(false);
-  
+  const [flashKey, setFlashKey] = useState(0); 
+  const [maskedValues, setMaskedValues] = useState<string[]>([]); 
+  const [showHelp, setShowHelp] = useState(false);
+  const [playerName, setPlayerName] = useState('');
+  const [visualMode, setVisualMode] = useState<'normal' | 'night'>('normal');
   const timerRef = useRef<number | null>(null);
 
   const generateLevel = useCallback((levelKey: LevelKey) => {
@@ -86,6 +78,7 @@ const App: React.FC = () => {
     let levelCards: string[] = [];
     let targets: string[] = [];
     let requiredCount = 0;
+    setMaskedValues([]); 
 
     if (levelKey === 'CHAOS') {
       const isUniqueLogic = Math.random() > 0.5;
@@ -109,9 +102,7 @@ const App: React.FC = () => {
         requiredCount = 3;
       }
       setChaosTargetCount(requiredCount);
-      setShowChaosHint(true);
-      // 縮短過場時間，從 800ms 減至 300ms
-      setTimeout(() => setShowChaosHint(false), 300);
+      setFlashKey(prev => prev + 1); 
     } else {
       setChaosLogic(null);
       targets = shuffledTotems.slice(0, config.targetTypes);
@@ -121,20 +112,14 @@ const App: React.FC = () => {
       levelCards = [...levelCards, ...otherValues];
       requiredCount = config.dupCount;
     }
-
     setTargetValues(targets);
-    const finalCards = levelCards
-      .sort(() => Math.random() - 0.5)
-      .map((val) => ({ id: Math.random(), value: val }));
-      
-    setCards(finalCards);
+    setCards(levelCards.sort(() => Math.random() - 0.5).map((val) => ({ id: Math.random(), value: val })));
     setSelectedIndices([]);
   }, []);
 
   const changeLevel = (newLevelKey: LevelKey) => {
     const newConfig = LEVELS[newLevelKey];
     if (newConfig.order < highestLevelIndex) return; 
-    
     sounds.click();
     setCurrentLevel(newLevelKey);
     setHighestLevelIndex(newConfig.order);
@@ -142,47 +127,41 @@ const App: React.FC = () => {
   };
 
   const startGame = () => {
-    sounds.init();
-    sounds.click();
+    sounds.init(); sounds.click();
     setScoreBreakdown({ BASIC: 0, ADVANCED: 0, LUXURY: 0, CHAOS: 0 });
-    setTotalClicks(0);
-    setCorrectClicks(0);
-    setTimeLeft(60);
-    setCurrentLevel('BASIC');
-    setHighestLevelIndex(0);
-    setGameState('playing');
-    generateLevel('BASIC');
+    setTotalClicks(0); setCorrectClicks(0); setTimeLeft(60);
+    setCurrentLevel('BASIC'); setHighestLevelIndex(0);
+    setGameState('playing'); generateLevel('BASIC');
   };
 
   useEffect(() => {
     if (gameState === 'playing' && timeLeft > 0) {
-      timerRef.current = window.setInterval(() => {
-        setTimeLeft((prev) => prev - 1);
-      }, 1000);
+      timerRef.current = window.setInterval(() => setTimeLeft((prev) => prev - 1), 1000);
     } else if (timeLeft === 0 && gameState === 'playing') {
-      sounds.victory();
-      setGameState('gameOver');
+      sounds.victory(); setGameState('gameOver');
     }
-    return () => {
-      if (timerRef.current) window.clearInterval(timerRef.current);
-    };
+    return () => { if (timerRef.current) window.clearInterval(timerRef.current); };
   }, [gameState, timeLeft]);
 
   const handleCardClick = (index: number) => {
-    if (gameState !== 'playing' || selectedIndices.includes(index)) return;
-
-    setTotalClicks(prev => prev + 1);
     const clickedCard = cards[index];
+    if (gameState !== 'playing' || selectedIndices.includes(index) || maskedValues.includes(clickedCard.value)) return;
+    
+    setTotalClicks(prev => prev + 1);
+    const isCorrectTarget = targetValues.includes(clickedCard.value);
     const config = LEVELS[currentLevel];
     const required = currentLevel === 'CHAOS' ? chaosTargetCount : config.dupCount;
 
-    if (!targetValues.includes(clickedCard.value)) {
+    if (!isCorrectTarget) {
       sounds.wrong();
+      const currentBoardValues = Array.from(new Set(cards.map(c => c.value)));
+      const wrongTypesOnBoard = currentBoardValues.filter(v => !targetValues.includes(v) && !maskedValues.includes(v));
+      if (wrongTypesOnBoard.length > 0) {
+        const randomWrongType = wrongTypesOnBoard[Math.floor(Math.random() * wrongTypesOnBoard.length)];
+        setMaskedValues(prev => [...prev, randomWrongType]);
+      }
       setGameState('error');
-      setTimeout(() => {
-        setGameState('playing');
-        setSelectedIndices([]);
-      }, 1000);
+      setTimeout(() => { setGameState('playing'); setSelectedIndices([]); }, 1200);
       return;
     }
 
@@ -190,16 +169,10 @@ const App: React.FC = () => {
     setCorrectClicks(prev => prev + 1);
     const newSelected = [...selectedIndices, index];
     setSelectedIndices(newSelected);
-
     if (newSelected.length === required) {
       sounds.correct();
-      setScoreBreakdown(prev => ({
-        ...prev,
-        [currentLevel]: prev[currentLevel] + config.score
-      }));
-      setTimeout(() => {
-        generateLevel(currentLevel);
-      }, 200);
+      setScoreBreakdown(prev => ({ ...prev, [currentLevel]: prev[currentLevel] + config.score }));
+      setTimeout(() => generateLevel(currentLevel), 100); 
     }
   };
 
@@ -209,101 +182,95 @@ const App: React.FC = () => {
   const exportResultAsJPG = () => {
     sounds.click();
     const canvas = document.createElement('canvas');
-    canvas.width = 1000;
-    canvas.height = 1400;
+    canvas.width = 1000; canvas.height = 1400;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const grad = ctx.createLinearGradient(0, 0, 1000, 1400);
-    grad.addColorStop(0, '#1e1b4b');
-    grad.addColorStop(0.5, '#0a0a0a');
-    grad.addColorStop(1, '#450a0a');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const displayName = playerName.trim() || '尊貴的玩家';
 
-    ctx.strokeStyle = '#4f46e5';
-    ctx.lineWidth = 20;
-    ctx.strokeRect(40, 40, 920, 1320);
-
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '900 80px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('圖騰尋蹤：行動結算', 500, 160);
-
-    let rank = 'C';
-    let rankColor = '#737373';
-    if (totalScore >= 150) { rank = 'GOD'; rankColor = '#ef4444'; }
-    else if (totalScore >= 100) { rank = 'SSS'; rankColor = '#fbbf24'; }
-    else if (totalScore >= 70) { rank = 'S'; rankColor = '#f59e0b'; }
-    else if (totalScore >= 40) { rank = 'A'; rankColor = '#6366f1'; }
-
-    ctx.fillStyle = rankColor;
-    ctx.font = 'italic 900 130px sans-serif';
-    ctx.fillText(rank, 500, 300);
-
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '900 300px tabular-nums';
-    ctx.fillText(totalScore.toString(), 500, 620);
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, 1000, 1400);
+    ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 30; ctx.strokeRect(50, 50, 900, 1300);
+    ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 10; ctx.strokeRect(30, 30, 940, 1340);
+    ctx.fillStyle = '#1e3a8a'; ctx.font = '900 80px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('🏆 挑戰成就獎狀', 500, 220);
     
-    const drawDataCard = (x: number, y: number, w: number, h: number, label: string, val: string) => {
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
-      ctx.beginPath(); ctx.roundRect(x, y, w, h, 20); ctx.fill();
-      ctx.fillStyle = '#94a3b8'; ctx.font = 'bold 24px sans-serif';
-      ctx.fillText(label, x + w/2, y + 50);
-      ctx.fillStyle = '#ffffff'; ctx.font = '900 50px sans-serif';
-      ctx.fillText(val, x + w/2, y + 130);
+    ctx.fillStyle = '#64748b'; ctx.font = 'bold 36px sans-serif';
+    ctx.fillText('恭喜完成動物捉迷藏測試', 500, 310);
+
+    ctx.fillStyle = '#1e3a8a'; ctx.font = 'bold 44px sans-serif';
+    ctx.fillText(`頒發給：${displayName}`, 500, 400);
+
+    ctx.fillStyle = '#ef4444'; ctx.font = '900 280px tabular-nums';
+    ctx.fillText(totalScore.toString(), 500, 720);
+    ctx.fillStyle = '#1e3a8a'; ctx.font = 'bold 60px sans-serif';
+    ctx.fillText('POINTS', 500, 820);
+
+    const drawStats = (x: number, y: number, label: string, val: string, color: string) => {
+      ctx.fillStyle = '#f8fafc'; ctx.beginPath(); ctx.roundRect(x, y, 400, 180, 40); ctx.fill();
+      ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 4; ctx.stroke();
+      ctx.fillStyle = '#94a3b8'; ctx.font = 'bold 30px sans-serif'; ctx.fillText(label, x + 200, y + 60);
+      ctx.fillStyle = color; ctx.font = '900 65px sans-serif'; ctx.fillText(val, x + 200, y + 140);
     };
-
-    drawDataCard(80, 750, 200, 180, '基礎', scoreBreakdown.BASIC.toString());
-    drawDataCard(300, 750, 200, 180, '晉級', scoreBreakdown.ADVANCED.toString());
-    drawDataCard(520, 750, 200, 180, '尊爵', scoreBreakdown.LUXURY.toString());
-    drawDataCard(740, 750, 200, 180, '混沌', scoreBreakdown.CHAOS.toString());
-
-    drawDataCard(80, 960, 410, 180, '總點擊', totalClicks.toString());
-    drawDataCard(510, 960, 430, 180, '準確率', accuracy + '%');
+    drawStats(80, 950, '操作精確度', accuracy + '%', '#f59e0b');
+    drawStats(520, 950, '反應點擊次數', totalClicks.toString(), '#3b82f6');
+    
+    ctx.fillStyle = '#64748b'; ctx.font = 'italic 28px sans-serif';
+    ctx.fillText('這是一份有效觀察力的證明', 500, 1220);
 
     const link = document.createElement('a');
-    link.download = `圖騰尋蹤_結算_${totalScore}.jpg`;
-    link.href = canvas.toDataURL('image/jpeg', 0.95);
-    link.click();
+    link.download = `成就獎狀_${displayName}_${totalScore}.jpg`;
+    link.href = canvas.toDataURL('image/jpeg', 0.9); link.click();
   };
 
+  // 背景顏色計算邏輯
+  const getBgClass = () => {
+    if (visualMode === 'night') return 'bg-slate-950 text-slate-100';
+    if (currentLevel === 'CHAOS' && gameState === 'playing') return 'bg-indigo-950 text-white';
+    return 'bg-slate-50 text-slate-800';
+  };
+
+  const isDark = visualMode === 'night' || (currentLevel === 'CHAOS' && gameState === 'playing');
+
   return (
-    <div className={`min-h-screen text-white font-sans selection:bg-indigo-500/30 flex flex-col items-center justify-center p-4 transition-colors duration-1000 ${currentLevel === 'CHAOS' && gameState === 'playing' ? 'bg-neutral-950 bg-[radial-gradient(circle_at_50%_50%,#450a0a44,transparent)]' : 'bg-neutral-950'}`}>
+    <div className={`min-h-screen font-sans selection:bg-blue-100 flex flex-col items-center justify-start p-4 transition-all duration-700 ${getBgClass()}`}>
       
-      {/* 頂部資訊欄 */}
+      {/* 頂部資訊看板 */}
       {gameState === 'playing' && (
-        <div className="fixed top-0 left-0 w-full p-2 md:p-8 flex flex-col gap-2 md:gap-6 z-20 animate-in fade-in slide-in-from-top-4 duration-500">
-          <div className="flex justify-between items-center max-w-5xl mx-auto w-full gap-2">
-            <div className="flex items-center gap-2 md:gap-4 bg-white/5 backdrop-blur-xl px-4 py-2 md:px-6 md:py-3 rounded-2xl md:rounded-3xl border border-white/10 shadow-2xl flex-1 justify-center">
-              <Trophy className="text-yellow-400 w-6 h-6 md:w-10 md:h-10" />
-              <span className="text-3xl md:text-6xl font-black tabular-nums tracking-tighter">{totalScore}</span>
+        <div className="w-full p-2 md:p-8 flex flex-col gap-4 z-20 animate-in fade-in slide-in-from-top-4 duration-500">
+          <div className="flex justify-between items-center max-w-4xl mx-auto w-full gap-3 md:gap-4">
+            <div className={`flex items-center gap-2 md:gap-4 px-4 py-2 md:px-8 md:py-4 rounded-2xl border-2 shadow-sm flex-1 justify-center transition-colors ${isDark ? 'bg-slate-800/80 border-slate-700 text-blue-300' : 'bg-white/95 border-blue-100 text-blue-600'}`}>
+              <Star className="text-yellow-400 w-5 h-5 md:w-10 md:h-10 fill-yellow-400 animate-pulse" />
+              <span className="text-2xl md:text-6xl font-black tabular-nums">{totalScore}</span>
             </div>
             
-            <div className={`flex items-center gap-2 md:gap-4 px-4 py-2 md:px-6 md:py-3 rounded-2xl md:rounded-3xl border transition-all duration-300 backdrop-blur-xl shadow-2xl flex-1 justify-center ${timeLeft < 10 ? 'bg-red-500/30 border-red-500/50 text-red-100 animate-pulse' : 'bg-white/5 border-white/10'}`}>
-              <Timer className={`w-6 h-6 md:w-10 md:h-10 ${timeLeft < 10 ? 'animate-spin' : ''}`} />
-              <span className="text-3xl md:text-6xl font-black tabular-nums tracking-tighter">{timeLeft}s</span>
+            <div className={`flex items-center gap-2 md:gap-4 px-4 py-2 md:px-8 md:py-4 rounded-2xl border-2 transition-all duration-300 shadow-sm flex-1 justify-center ${timeLeft < 10 ? 'bg-red-50 border-red-200 text-red-600 animate-pulse' : isDark ? 'bg-slate-800/80 border-slate-700 text-slate-200' : 'bg-white/95 border-blue-50 text-slate-600'}`}>
+              <Timer className={`w-5 h-5 md:w-10 md:h-10 ${timeLeft < 10 ? 'animate-bounce' : ''}`} />
+              <span className="text-2xl md:text-6xl font-black tabular-nums">{timeLeft}</span>
             </div>
+
+            <button 
+              onClick={() => { sounds.click(); setShowHelp(true); }}
+              className={`border-2 p-2 md:p-4 rounded-2xl shadow-sm transition-all active:scale-90 ${isDark ? 'bg-slate-800/80 border-slate-700 text-blue-300 hover:bg-slate-700' : 'bg-white/95 border-blue-100 text-blue-400 hover:text-blue-600 hover:bg-blue-50'}`}
+              aria-label="遊戲說明"
+            >
+              <HelpCircle className="w-6 h-6 md:w-10 md:h-10" />
+            </button>
           </div>
           
-          <div className="flex overflow-x-auto no-scrollbar gap-1 bg-neutral-900/60 p-1.5 rounded-2xl md:rounded-[2.5rem] border border-white/10 backdrop-blur-md self-center shadow-2xl max-w-full">
+          <div className={`flex overflow-x-auto no-scrollbar gap-2 p-1.5 rounded-full self-center shadow-inner max-w-full backdrop-blur-sm ${isDark ? 'bg-white/10' : 'bg-white/30'}`}>
             {(Object.keys(LEVELS) as LevelKey[]).map((k) => {
               const config = LEVELS[k];
               const isDisabled = config.order < highestLevelIndex;
               const isActive = currentLevel === k;
-              
               return (
                 <button
-                  key={k}
-                  disabled={isDisabled}
-                  onClick={() => changeLevel(k)}
-                  className={`flex items-center gap-1 md:gap-2 px-3 py-2 md:px-6 md:py-3 rounded-xl md:rounded-2xl text-sm md:text-xl font-black transition-all duration-300 whitespace-nowrap
-                    ${isActive ? (k === 'CHAOS' ? 'bg-red-600 shadow-[0_0_20px_#ef4444]' : 'bg-indigo-600 shadow-[0_0_20px_#6366f1]') : 'text-neutral-500'}
-                    ${isDisabled ? 'opacity-20 cursor-not-allowed' : 'hover:bg-white/5 hover:text-white'}
+                  key={k} disabled={isDisabled} onClick={() => changeLevel(k)}
+                  className={`flex items-center justify-center w-12 h-12 md:w-20 md:h-20 rounded-full text-xl md:text-4xl transition-all duration-300 active:scale-90
+                    ${isActive ? 'bg-blue-500 text-white shadow-md scale-110' : isDark ? 'bg-slate-800 text-blue-300 border border-slate-700' : 'bg-white text-blue-400 border border-blue-50'}
+                    ${isDisabled ? 'opacity-30 cursor-not-allowed grayscale' : isDark ? 'hover:bg-slate-700' : 'hover:bg-blue-50'}
                   `}
                 >
-                  {isDisabled ? <Lock className="w-3 h-3 md:w-5 md:h-5" /> : k === 'CHAOS' ? <Zap className="w-3 h-3 md:w-5 md:h-5" /> : null}
-                  {config.name}
+                  {config.icon}
                 </button>
               );
             })}
@@ -311,131 +278,147 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* 主遊戲區域 */}
-      <main className="w-full max-w-3xl mt-20 md:mt-24">
+      {/* 核心內容區 */}
+      <main className="w-full max-w-4xl flex-grow flex flex-col items-center justify-center py-4">
         {gameState === 'menu' && (
-          <div className="text-center space-y-8 md:space-y-12 animate-in fade-in zoom-in duration-700 px-4">
-            <div className="space-y-4 md:space-y-6">
-              <div className="w-24 h-24 md:w-40 md:h-40 bg-indigo-600 rounded-[2rem] md:rounded-[3rem] mx-auto flex items-center justify-center rotate-12 shadow-[0_0_60px_rgba(79,70,229,0.3)] animate-pulse">
-                <Target className="w-12 h-12 md:w-20 md:h-20 text-white" />
+          <div className="text-center space-y-8 animate-in fade-in zoom-in duration-700 px-4">
+            <div className="space-y-4">
+              <div className="w-24 h-24 md:w-44 md:h-44 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-3xl mx-auto flex items-center justify-center rotate-3 shadow-xl animate-bounce border-4 border-white">
+                <Ghost className="w-12 h-12 md:w-20 md:h-20 text-white" />
               </div>
-              <h1 className="text-6xl md:text-[10rem] font-black tracking-tighter bg-gradient-to-b from-white to-neutral-600 bg-clip-text text-transparent leading-none">
-                圖騰尋蹤
-              </h1>
-              <p className="text-lg md:text-3xl text-neutral-400 font-medium tracking-[0.3em] md:tracking-[0.5em] uppercase">Hyper-Focus Challenge</p>
+              <h1 className={`text-5xl md:text-8xl font-black tracking-tight leading-none transition-colors ${isDark ? 'text-white' : 'text-slate-800'}`}>動物捉迷藏</h1>
+              <p className={`text-lg md:text-3xl font-bold tracking-widest uppercase inline-block px-8 py-2 rounded-full border transition-all ${isDark ? 'bg-blue-900/40 text-blue-300 border-blue-800' : 'bg-blue-50/80 text-blue-400 border-blue-100'}`}>正常版</p>
             </div>
-            
+
+            {/* 主題選擇區 */}
+            <div className="space-y-4">
+              <p className={`text-sm md:text-xl font-black tracking-widest opacity-60 uppercase transition-colors ${isDark ? 'text-blue-200' : 'text-slate-500'}`}>視覺風格呈現</p>
+              <div className={`flex gap-3 p-2 rounded-2.5xl backdrop-blur-md mx-auto inline-flex transition-colors ${isDark ? 'bg-white/10' : 'bg-slate-200/50'}`}>
+                <button
+                  onClick={() => { sounds.click(); setVisualMode('normal'); }}
+                  className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-black text-lg transition-all ${visualMode === 'normal' ? 'bg-white text-blue-600 shadow-lg scale-105' : 'text-slate-400 hover:text-slate-600'}`}
+                >
+                  <Sun className={`w-5 h-5 ${visualMode === 'normal' ? 'fill-yellow-400 text-yellow-500' : ''}`} /> ☀️ 正常
+                </button>
+                <button
+                  onClick={() => { sounds.click(); setVisualMode('night'); }}
+                  className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-black text-lg transition-all ${visualMode === 'night' ? 'bg-slate-800 text-blue-400 shadow-lg scale-105' : 'text-slate-400 hover:text-slate-200'}`}
+                >
+                  <Moon className={`w-5 h-5 ${visualMode === 'night' ? 'fill-blue-400 text-blue-400' : ''}`} /> 🌙 夜暮
+                </button>
+              </div>
+            </div>
+
             <button
               onClick={startGame}
-              className="group relative px-12 py-6 md:px-24 md:py-12 bg-white text-black rounded-3xl md:rounded-[3rem] font-black text-3xl md:text-6xl hover:scale-105 active:scale-95 transition-all shadow-[0_0_70px_rgba(255,255,255,0.2)] flex items-center gap-4 md:gap-6 mx-auto"
+              className="group relative px-12 py-6 md:px-24 md:py-10 bg-blue-600 text-white rounded-3xl font-black text-3xl md:text-5xl hover:scale-105 active:scale-95 transition-all shadow-[0_10px_0_#1e3a8a] flex items-center gap-4 mx-auto"
             >
-              啟動 <ChevronRight className="w-8 h-8 md:w-16 md:h-16 group-hover:translate-x-4 transition-transform" />
+              即刻開始 <Zap className="w-8 h-8 md:w-14 md:h-14 fill-white" />
             </button>
           </div>
         )}
 
         {(gameState === 'playing' || gameState === 'error') && (
-          <div className="animate-in fade-in slide-in-from-bottom-12 duration-500 px-2">
-            <div className="mb-6 md:mb-12 text-center space-y-2 md:space-y-4">
-              <div className="flex items-center justify-center gap-2 md:gap-3">
-                <div className={`h-0.5 md:h-1 w-8 md:w-12 rounded-full ${currentLevel === 'CHAOS' ? 'bg-red-600 animate-pulse' : 'bg-indigo-600'}`} />
-                <p className={`uppercase tracking-[0.3em] md:tracking-[0.5em] text-sm md:text-2xl font-black ${currentLevel === 'CHAOS' ? 'text-red-500' : 'text-indigo-400'}`}>
-                  {LEVELS[currentLevel].name} 模式
-                </p>
-                <div className={`h-0.5 md:h-1 w-8 md:w-12 rounded-full ${currentLevel === 'CHAOS' ? 'bg-red-600 animate-pulse' : 'bg-indigo-600'}`} />
+          <div key={flashKey} className={`w-full animate-in fade-in slide-in-from-bottom-6 duration-500 px-4 flex flex-col items-center ${currentLevel === 'CHAOS' ? 'animate-rainbow-flash' : ''}`}>
+            <div className="mb-6 md:mb-10 text-center space-y-2">
+              <div className={`inline-block px-4 py-0.5 rounded-full border shadow-sm transition-colors ${isDark ? 'bg-blue-900/30 border-blue-800 text-blue-300' : 'bg-blue-50 border-blue-100 text-blue-500'}`}>
+                <p className="uppercase tracking-widest text-[10px] md:text-xl font-black">LEVEL {LEVELS[currentLevel].icon}</p>
               </div>
-              
-              <h2 className={`text-3xl md:text-7xl font-black transition-all ${currentLevel === 'CHAOS' ? 'text-white' : ''}`}>
+              <h2 className={`text-2xl md:text-6xl font-black tracking-tight transition-colors ${isDark ? 'text-white' : 'text-slate-800'}`}>
                 {currentLevel === 'CHAOS' ? (
                   chaosLogic === 'FIND_UNIQUE' ? (
-                    <span className="text-red-500 italic">點出 2 個 孤影圖騰！</span>
+                    <span>鎖定 <span className="text-blue-400 underline decoration-indigo-200/30 underline-offset-4">2組獨特</span> 圖標</span>
                   ) : (
-                    <span className="text-yellow-400 italic">找出 3 重複圖騰！</span>
+                    <span>尋找 <span className="text-orange-400 underline decoration-amber-200/30 underline-offset-4">3圖1組</span> 圖標</span>
                   )
                 ) : (
                   <div className="flex flex-col items-center">
-                    <div>找出 <span className="bg-indigo-600 px-3 py-1 md:px-6 md:py-2 rounded-xl md:rounded-2xl text-white inline-block -rotate-2">{LEVELS[currentLevel].dupCount}</span> 個重複項</div>
-                    {currentLevel === 'LUXURY' && <div className="text-xl md:text-3xl text-neutral-500 mt-2 font-black tracking-widest bg-white/5 px-4 py-1 rounded-full">( 共 2 組數字 )</div>}
+                    <div>定位 <span className="bg-blue-600 px-6 py-1 rounded-xl text-white inline-block shadow-md">{LEVELS[currentLevel].dupCount}</span> 個相同圖示</div>
+                    {currentLevel === 'LUXURY' && <div className={`text-sm md:text-2xl mt-2 font-bold tracking-widest ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>( 雙重目標啟動 )</div>}
                   </div>
                 )}
               </h2>
             </div>
 
-            <div className={`grid gap-2 md:gap-8 ${LEVELS[currentLevel].grid}`}>
-              {cards.map((card, idx) => (
-                <button
-                  key={card.id}
-                  onClick={() => handleCardClick(idx)}
-                  className={`aspect-square flex items-center justify-center rounded-2xl md:rounded-[2.5rem] font-black transition-all duration-300 shadow-2xl border-2 md:border-4
-                    ${selectedIndices.includes(idx) 
-                      ? (currentLevel === 'CHAOS' ? 'bg-red-600 text-white scale-105 z-10 rotate-3 shadow-[0_0_20px_#ef4444]' : 'bg-indigo-600 text-white scale-105 z-10 rotate-3 shadow-[0_0_20px_#6366f1]') 
-                      : 'bg-neutral-900 border-neutral-800 text-neutral-300 active:scale-90'}
-                    ${currentLevel === 'CHAOS' || currentLevel === 'LUXURY' ? 'text-6xl md:text-[9rem]' : 'text-7xl md:text-[11rem]'}
-                  `}
-                >
-                  {card.value}
-                </button>
-              ))}
+            <div className="w-full flex justify-center items-center min-h-[320px] md:min-h-[500px]">
+              <div className={`grid gap-3 md:gap-6 w-full ${LEVELS[currentLevel].grid}`}>
+                {cards.map((card, idx) => {
+                  const isMasked = maskedValues.includes(card.value);
+                  const isSelected = selectedIndices.includes(idx);
+                  return (
+                    <button
+                      key={card.id} onClick={() => handleCardClick(idx)} disabled={isMasked}
+                      className={`aspect-square flex items-center justify-center rounded-2xl md:rounded-3xl font-black transition-all duration-300 border-2 md:border-4 relative overflow-hidden
+                        ${isSelected 
+                          ? 'bg-amber-400 border-amber-500 text-white scale-110 z-10 rotate-2 shadow-xl' 
+                          : isMasked 
+                            ? 'bg-slate-200 border-slate-300 opacity-20 scale-90 grayscale blur-[1px] pointer-events-none'
+                            : isDark 
+                              ? 'bg-white border-slate-200 text-slate-800 active:scale-95 shadow-[0_4px_0_#1e293b] hover:bg-slate-50'
+                              : 'bg-white border-blue-50 text-slate-700 active:scale-95 shadow-[0_4px_0_#f1f5f9] hover:bg-blue-50/30'}
+                        ${currentLevel === 'CHAOS' || currentLevel === 'LUXURY' ? 'text-4xl md:text-8xl' : 'text-6xl md:text-9xl'}
+                      `}
+                    >
+                      <span className="block transform-gpu">{isMasked ? '🙈' : card.value}</span>
+                      {isMasked && <div className="absolute inset-0 bg-slate-100/10 backdrop-blur-[1px]" />}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}
 
         {gameState === 'gameOver' && (
-          <div className="space-y-6 md:space-y-10 animate-in zoom-in fade-in duration-700 max-w-2xl mx-auto px-4 overflow-y-auto max-h-[90vh] no-scrollbar pb-10">
-            <div className="bg-neutral-900/90 border-2 md:border-4 border-indigo-500/20 rounded-[3rem] md:rounded-[5rem] p-8 md:p-16 space-y-8 md:space-y-12 shadow-2xl backdrop-blur-3xl text-center">
-              <div className="space-y-1">
-                <p className="text-indigo-400 font-black tracking-[0.3em] md:tracking-[0.5em] uppercase text-sm md:text-2xl">FINAL SCORE</p>
-                <div className="text-7xl md:text-[14rem] leading-none font-black text-white tracking-tighter drop-shadow-2xl">{totalScore}</div>
+          <div className="space-y-8 animate-in zoom-in fade-in duration-700 max-w-2xl mx-auto px-4 w-full text-center">
+            <div className={`border-8 rounded-[3rem] p-8 md:p-16 space-y-8 shadow-xl relative overflow-hidden transition-colors ${isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-blue-50 text-slate-800'}`}>
+              <div className="absolute top-0 left-0 w-full h-4 bg-gradient-to-r from-blue-400 to-indigo-500" />
+              
+              <div className="space-y-2">
+                <p className={`font-black tracking-widest uppercase text-base md:text-2xl transition-colors ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>Final Score Achieved</p>
+                <div className="text-8xl md:text-[10rem] leading-none font-black text-blue-600 tracking-tighter drop-shadow-lg">{totalScore}</div>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4 border-y-2 border-white/10 py-6 md:py-12">
-                <div className="p-2">
-                  <div className="text-[10px] md:text-xs text-neutral-500 font-black tracking-widest uppercase">基礎</div>
-                  <div className="text-2xl md:text-5xl font-black text-indigo-200">{scoreBreakdown.BASIC}</div>
-                </div>
-                <div className="p-2 border-l border-white/10 md:border-x-2">
-                  <div className="text-[10px] md:text-xs text-neutral-500 font-black tracking-widest uppercase">晉級</div>
-                  <div className="text-2xl md:text-5xl font-black text-indigo-400">{scoreBreakdown.ADVANCED}</div>
-                </div>
-                <div className="p-2 border-t md:border-t-0 md:border-r-2 border-white/10">
-                  <div className="text-[10px] md:text-xs text-neutral-500 font-black tracking-widest uppercase">尊爵</div>
-                  <div className="text-2xl md:text-5xl font-black text-indigo-600">{scoreBreakdown.LUXURY}</div>
-                </div>
-                <div className="p-2 border-t md:border-t-0 border-l md:border-l-0 border-white/10">
-                  <div className="text-[10px] md:text-xs text-red-500 font-black tracking-widest uppercase">混沌</div>
-                  <div className="text-2xl md:text-5xl font-black text-red-600">{scoreBreakdown.CHAOS}</div>
-                </div>
+              {/* 署名欄位 */}
+              <div className="space-y-3 text-left">
+                <label className={`flex items-center gap-2 text-sm md:text-xl font-black ml-2 transition-colors ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                  <User className="w-4 h-4 md:w-6 md:h-6" /> 成就署名
+                </label>
+                <input 
+                  type="text"
+                  maxLength={12}
+                  placeholder="尊貴的玩家 (空白以此顯示)"
+                  value={playerName}
+                  onChange={(e) => setPlayerName(e.target.value)}
+                  className={`w-full border-4 rounded-2xl py-3 px-6 text-xl md:text-3xl font-bold transition-all focus:ring-0 focus:outline-none shadow-inner ${isDark ? 'bg-slate-800 border-slate-700 text-white focus:border-blue-500 placeholder:text-slate-600' : 'bg-slate-50 border-blue-100 text-slate-700 focus:border-blue-400 placeholder:text-slate-300'}`}
+                />
               </div>
 
-              <div className="grid grid-cols-2 gap-4 md:gap-8">
-                <div className="flex flex-col items-center gap-1 md:gap-3 p-4 md:p-10 bg-white/5 rounded-3xl md:rounded-[4rem] border border-white/5">
-                  <MousePointer2 className="w-6 h-6 md:w-12 md:h-12 text-neutral-500" />
-                  <div className="text-[10px] md:text-sm text-neutral-500 font-bold uppercase tracking-widest">總點擊</div>
-                  <div className="text-2xl md:text-5xl font-black tracking-tighter">{totalClicks}</div>
+              <div className={`grid grid-cols-2 gap-4 border-y-2 py-6 transition-colors ${isDark ? 'border-slate-800' : 'border-slate-50'}`}>
+                <div className="flex flex-col items-center gap-1">
+                  <Zap className="w-8 h-8 md:w-10 md:h-10 text-blue-500" />
+                  <div className={`text-xs md:text-lg font-black uppercase transition-colors ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>操作頻率</div>
+                  <div className={`text-3xl md:text-5xl font-black transition-colors ${isDark ? 'text-white' : 'text-slate-800'}`}>{totalClicks}</div>
                 </div>
-                <div className="flex flex-col items-center gap-1 md:gap-3 p-4 md:p-10 bg-white/5 rounded-3xl md:rounded-[4rem] border border-white/5">
-                  <Target className="w-6 h-6 md:w-12 md:h-12 text-neutral-500" />
-                  <div className="text-[10px] md:text-sm text-neutral-500 font-bold uppercase tracking-widest">正確率</div>
-                  <div className={`text-2xl md:text-5xl font-black tracking-tighter ${accuracy > 85 ? 'text-green-400' : accuracy > 60 ? 'text-yellow-400' : 'text-red-400'}`}>
-                    {accuracy}%
-                  </div>
+                <div className="flex flex-col items-center gap-1">
+                  <Star className="w-8 h-8 md:w-10 md:h-10 text-amber-500 fill-amber-500" />
+                  <div className={`text-xs md:text-lg font-black uppercase transition-colors ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>精準係數</div>
+                  <div className="text-3xl md:text-5xl font-black text-blue-600">{accuracy}%</div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <button
                   onClick={() => setGameState('menu')}
-                  className="flex items-center justify-center gap-3 md:gap-6 bg-neutral-800 text-white font-black py-5 md:py-10 rounded-2xl md:rounded-[3.5rem] hover:bg-neutral-700 transition-all active:scale-95 shadow-2xl text-xl md:text-4xl"
+                  className={`flex items-center justify-center gap-3 font-black py-4 rounded-2xl transition-all active:scale-95 text-xl md:text-2xl shadow-lg ${isDark ? 'bg-slate-700 text-white hover:bg-slate-600' : 'bg-slate-800 text-white hover:bg-black'}`}
                 >
-                  <RotateCcw className="w-6 h-6 md:w-12 md:h-12" />
-                  重啟
+                  <RotateCcw className="w-6 h-6 md:w-8 md:h-8" /> RETRY
                 </button>
                 <button
                   onClick={exportResultAsJPG}
-                  className="flex items-center justify-center gap-3 md:gap-6 bg-white text-black font-black py-5 md:py-10 rounded-2xl md:rounded-[3.5rem] hover:bg-neutral-200 transition-all active:scale-95 shadow-2xl text-xl md:text-4xl"
+                  className="flex items-center justify-center gap-3 bg-blue-600 text-white font-black py-4 rounded-2xl hover:bg-blue-700 transition-all active:scale-95 text-xl md:text-2xl shadow-lg border-b-4 border-blue-800"
                 >
-                  <Download className="w-6 h-6 md:w-12 md:h-12" />
-                  匯出 JPG
+                  <Download className="w-6 h-6 md:w-8 md:h-8" /> SAVE JPG
                 </button>
               </div>
             </div>
@@ -443,38 +426,81 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {/* 混沌提示 (更快速的閃爍提示) */}
-      {showChaosHint && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-red-600/60 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="text-center p-6 bg-black rounded-[2rem] shadow-[0_0_80px_#ef4444] border-4 border-red-500 scale-90 md:scale-125">
-            <Zap className="w-16 h-16 text-yellow-400 mx-auto mb-2 fill-yellow-400" />
-            <h3 className="text-4xl md:text-7xl font-black italic text-white mb-1">混沌來襲！</h3>
-            <p className="text-xl md:text-3xl font-black text-red-500 uppercase tracking-widest">切換邏輯...</p>
+      {/* 錯誤演出 */}
+      {gameState === 'error' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="text-center space-y-6 animate-in zoom-in duration-300 px-6">
+            <div className="text-[120px] md:text-[240px] leading-none animate-bounce drop-shadow-2xl">🙈</div>
+            <h2 className="text-4xl md:text-8xl font-black text-white italic uppercase bg-blue-600 px-12 py-6 rounded-3xl shadow-2xl">Shift Detected</h2>
+            <p className="text-blue-100 font-black text-lg md:text-3xl tracking-widest uppercase bg-slate-800/80 px-8 py-3 rounded-full border border-blue-500/30">系統已排除一項干擾座標</p>
           </div>
         </div>
       )}
 
-      {/* 錯誤演出 */}
-      {gameState === 'error' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-3xl animate-in fade-in duration-300">
-          <div className="text-center space-y-6 md:space-y-10 animate-in zoom-in duration-300 px-6">
-            <div className={`text-[120px] md:text-[300px] leading-none animate-bounce drop-shadow-[0_0_80px_rgba(255,255,255,0.2)]`}>🙈</div>
-            <h2 className={`text-4xl md:text-9xl font-black text-white tracking-[0.2em] md:tracking-[0.5em] uppercase italic px-8 py-3 md:px-16 md:py-6 -rotate-3 shadow-2xl ${currentLevel === 'CHAOS' ? 'bg-red-800' : 'bg-red-600'}`}>
-              {currentLevel === 'CHAOS' ? '思緒混亂！' : '手誤遺憾！'}
-            </h2>
-            <p className="text-neutral-400 font-black text-xl md:text-4xl tracking-[0.2em] md:tracking-[0.6em] uppercase">Focus Resetting...</p>
+      {/* 說明彈窗 */}
+      {showHelp && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-white/40 backdrop-blur-xl animate-in fade-in duration-300 p-6">
+          <div className={`w-full max-w-lg border-4 rounded-[2.5rem] shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh] transition-colors ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-blue-100'}`}>
+             <div className="bg-blue-500 p-6 flex justify-between items-center text-white">
+                <h3 className="text-2xl md:text-4xl font-black italic">遊戲規則說明</h3>
+                <button onClick={() => setShowHelp(false)} className="bg-white/20 p-2 rounded-full hover:bg-white/40 transition-colors">
+                  <X className="w-6 h-6 md:w-10 md:h-10" />
+                </button>
+             </div>
+             <div className={`p-8 md:p-12 overflow-y-auto space-y-8 transition-colors ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
+                <section className="space-y-4">
+                  <h4 className="text-xl md:text-2xl font-black text-blue-600 flex items-center gap-2">
+                    <Star className="w-6 h-6 fill-blue-600" /> 基本規則
+                  </h4>
+                  <p className="text-lg md:text-xl font-bold leading-relaxed">
+                    在限時 60 秒內，根據畫面上方的指示點擊圖標。累積積分越多，反應評分越高！
+                  </p>
+                </section>
+
+                <section className="space-y-4">
+                  <h4 className={`text-xl md:text-2xl font-black flex items-center gap-2 transition-colors ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`}>
+                    <Ghost className="w-6 h-6" /> 排除機制 (🙈)
+                  </h4>
+                  <p className="text-lg md:text-xl font-bold leading-relaxed">
+                    若點擊錯誤，系統將自動掃描並移除一種「干擾圖標」，以 🙈 遮眼圖示標記，幫助你鎖定正確座標。
+                  </p>
+                </section>
+
+                <section className="space-y-4">
+                  <h4 className="text-xl md:text-2xl font-black text-amber-600 flex items-center gap-2">
+                    <Zap className="w-6 h-6 fill-amber-600" /> 等級說明
+                  </h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className={`p-4 rounded-2xl border transition-colors ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-100'} text-center`}>
+                      <div className="text-2xl mb-1">🌱 / 🌳</div>
+                      <div className="font-bold text-sm">單一目標定位</div>
+                    </div>
+                    <div className={`p-4 rounded-2xl border transition-colors ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-100'} text-center`}>
+                      <div className="text-2xl mb-1">🌲</div>
+                      <div className="font-bold text-sm">雙重對稱目標</div>
+                    </div>
+                    <div className={`p-4 rounded-2xl border transition-colors ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-100'} text-center`}>
+                      <div className="text-2xl mb-1">🌈</div>
+                      <div className="font-bold text-sm text-pink-500">混亂邏輯 (找出唯一)</div>
+                    </div>
+                  </div>
+                </section>
+             </div>
+             <div className={`p-6 border-t flex justify-center transition-colors ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
+                <button 
+                  onClick={() => setShowHelp(false)}
+                  className="bg-blue-600 text-white font-black px-12 py-4 rounded-full text-xl md:text-2xl shadow-lg hover:scale-105 active:scale-95 transition-all"
+                >
+                  理解了！
+                </button>
+             </div>
           </div>
         </div>
       )}
 
       {/* 背景裝飾 */}
-      <div className="fixed top-[-20%] left-[-20%] w-[80%] h-[80%] bg-indigo-600/10 blur-[250px] rounded-full pointer-events-none -z-10" />
-      <div className="fixed bottom-[-20%] right-[-20%] w-[80%] h-[80%] bg-red-600/10 blur-[250px] rounded-full pointer-events-none -z-10" />
-
-      <style>{`
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-      `}</style>
+      <div className={`fixed top-[-10%] left-[-10%] w-[50%] h-[50%] blur-[150px] rounded-full pointer-events-none -z-10 transition-colors ${isDark ? 'bg-blue-900/10' : 'bg-blue-100/30'}`} />
+      <div className={`fixed bottom-[-10%] right-[-10%] w-[50%] h-[50%] blur-[150px] rounded-full pointer-events-none -z-10 transition-colors ${isDark ? 'bg-indigo-900/10' : 'bg-indigo-100/30'}`} />
     </div>
   );
 };
@@ -482,9 +508,5 @@ const App: React.FC = () => {
 const rootElement = document.getElementById('root');
 if (rootElement) {
   const root = ReactDOM.createRoot(rootElement);
-  root.render(
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>
-  );
+  root.render(<App />);
 }

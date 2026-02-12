@@ -1,24 +1,43 @@
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-TW">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>圖騰尋蹤 - 記憶配對挑戰</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>動物捉迷藏 |專注力測試</title>
   <script src="https://cdn.tailwindcss.com"></script>
 <script type="importmap">
 {
   "imports": {
-    "react/": "https://esm.sh/react@^18.2.0/",
-    "react": "https://esm.sh/react@^18.2.0",
-    "react-dom/": "https://esm.sh/react-dom@^18.2.0/",
-    "lucide-react": "https://esm.sh/lucide-react@0.344.0"
+    "react": "https://esm.sh/react@18.2.0",
+    "react/": "https://esm.sh/react@18.2.0/",
+    "react-dom": "https://esm.sh/react-dom@18.2.0",
+    "react-dom/": "https://esm.sh/react-dom@18.2.0/",
+    "lucide-react": "https://esm.sh/lucide-react@0.344.0?external=react"
   }
 }
 </script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@800&family=ZCOOL+KuaiLe&display=swap');
+  body {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    font-family: 'Plus Jakarta Sans', 'ZCOOL KuaiLe', cursive, sans-serif;
+  }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  
+  @keyframes rainbow-flash {
+    0% { background-color: rgba(99, 102, 241, 0.4); }
+    100% { background-color: transparent; }
+  }
+  .animate-rainbow-flash {
+    animation: rainbow-flash 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+</style>
 <link rel="stylesheet" href="/index.css">
 </head>
-<body class="bg-neutral-950 text-neutral-100 antialiased selection:bg-indigo-500/30">
+<body class="bg-slate-50 text-slate-800 antialiased selection:bg-blue-100 overflow-x-hidden">
   <div id="root"></div>
   <script type="module" src="/index.tsx"></script>
 </body>
