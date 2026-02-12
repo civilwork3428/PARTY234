@@ -1,24 +1,41 @@
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-TW">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>圖騰尋蹤 - 記憶配對挑戰</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>圖騰尋蹤 - 混沌挑戰</title>
   <script src="https://cdn.tailwindcss.com"></script>
 <script type="importmap">
 {
   "imports": {
-    "react/": "https://esm.sh/react@^18.2.0/",
-    "react": "https://esm.sh/react@^18.2.0",
-    "react-dom/": "https://esm.sh/react-dom@^18.2.0/",
-    "lucide-react": "https://esm.sh/lucide-react@0.344.0"
+    "react": "https://esm.sh/react@18.2.0",
+    "react/": "https://esm.sh/react@18.2.0/",
+    "react-dom": "https://esm.sh/react-dom@18.2.0",
+    "react-dom/": "https://esm.sh/react-dom@18.2.0/",
+    "lucide-react": "https://esm.sh/lucide-react@0.344.0?external=react"
   }
 }
 </script>
+<style>
+  body {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  
+  @keyframes chaos-flash {
+    0% { background-color: rgba(239, 68, 68, 0.4); }
+    100% { background-color: transparent; }
+  }
+  .animate-chaos-flash {
+    animation: chaos-flash 0.3s ease-out forwards;
+  }
+</style>
 <link rel="stylesheet" href="/index.css">
 </head>
-<body class="bg-neutral-950 text-neutral-100 antialiased selection:bg-indigo-500/30">
+<body class="bg-neutral-950 text-neutral-100 antialiased selection:bg-indigo-500/30 overflow-x-hidden">
   <div id="root"></div>
   <script type="module" src="/index.tsx"></script>
 </body>
